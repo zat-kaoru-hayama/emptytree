@@ -10,12 +10,14 @@ import (
 type Agent interface {
 	DoFile(string) error
 	DoDir(string) error
+	Close() error
 }
 
 type DryRun struct{}
 
 func (DryRun) DoFile(string) error { return nil }
 func (DryRun) DoDir(string) error  { return nil }
+func (DryRun) Close() error        { return nil }
 
 type NormalRun struct{}
 
@@ -32,15 +34,49 @@ func (NormalRun) DoFile(s string) error {
 	return fd.Close()
 }
 
+func (NormalRun) Close() error { return nil }
+
+type Undo struct {
+	list []string
+}
+
+func (*Undo) DoFile(fname string) error {
+	stat, err := os.Stat(fname)
+	if err != nil {
+		return nil
+	}
+	if stat.Size() > 0 {
+		return fmt.Errorf("%s: not zero size", fname)
+	}
+	return os.Remove(fname)
+}
+
+func (u *Undo) DoDir(fname string) error {
+	u.list = append(u.list, fname)
+	return nil
+}
+
+func (u *Undo) Close() error {
+	for i := len(u.list) - 1; i >= 0; i-- {
+		os.Remove(u.list[i])
+	}
+	return nil
+}
+
 var flagDryRun = flag.Bool("n", false, "dry run")
+var flagUndo = flag.Bool("u", false, "undo")
 
 func mains(args []string) error {
 	var agent Agent
 	if *flagDryRun {
 		agent = DryRun{}
+	} else if *flagUndo {
+		agent = &Undo{}
 	} else {
 		agent = NormalRun{}
 	}
+	defer agent.Close()
+
 	for _, root := range args {
 		baseLen := len(root) + 1
 		err := filepath.Walk(root, func(path string, f os.FileInfo, _ error) (err error) {
