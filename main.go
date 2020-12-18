@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 )
 
 type Agent interface {
@@ -22,12 +24,19 @@ func (DryRun) Close() error        { return nil }
 type NormalRun struct{}
 
 func (NormalRun) DoDir(s string) error {
-	return os.Mkdir(s, 0777)
+	err := os.Mkdir(s, 0777)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	return err
 }
 
 func (NormalRun) DoFile(s string) error {
 	fd, err := os.OpenFile(s,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
