@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
+	"strings"
 )
 
 type Agent interface {
@@ -87,12 +87,17 @@ func mains(args []string) error {
 	defer agent.Close()
 
 	for _, root := range args {
-		baseLen := len(root) + 1
 		err := filepath.Walk(root, func(path string, f os.FileInfo, _ error) (err error) {
-			if len(path) < baseLen {
-				return
+			relativePath := path
+			if strings.HasPrefix(relativePath, root) {
+				relativePath = relativePath[len(root):]
 			}
-			relativePath := path[baseLen:]
+			if len(relativePath) <= 0 {
+				return nil
+			}
+			if relativePath[0] == filepath.Separator {
+				relativePath = relativePath[1:]
+			}
 			if f.IsDir() {
 				fmt.Printf("mkdir      \"%s\"\n", relativePath)
 				err = agent.DoDir(relativePath)
